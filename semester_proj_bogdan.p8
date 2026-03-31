@@ -214,6 +214,8 @@ function player:update()
     dxy:mul(self.vel)
     self.pos:add(dxy)
 
+
+
     entity.update(self)
 
 end
@@ -230,6 +232,13 @@ function player:take_damage(dmg, src)
     self.pos:add(dxy)
 end
 
+function player:draw()
+    entity.draw(self)
+
+    --ui 
+    local hp_bar = flr(6 * self.hp / 100) + 1
+    rect(self.pos.x + 1, self.pos.y - 2, self.pos.x + hp_bar, self.pos.y - 2, 8)
+end
 
 -->8
 --enemies
