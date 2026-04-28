@@ -1,47 +1,87 @@
 pico-8 cartridge // http://www.pico-8.com
 version 43
 __lua__
-
 --debug
 debug_coll = false
 
-
 enemies = {}
+fireballs = {}
+
+spawn_cfg = {
+    freq = 180,
+    amount = 2,
+    spd_mul = 1,
+    hp_mul = 1
+}
+
+cam_x = 0
+cam_y = 0
+spawn_timer = 0
+
+player_stats = {
+    atk_spd = 20 -- frames cooldown per attack
+}
+atk_timer = 0
 
 function _init()
     p = player:new()
-    add(enemies, dwarf:new(15,15))
-
+    add(enemies, dwarf:new(15, 15))
 end
 
 function _update()
     local p_hit = false
     p:update()
-    
+
+    spawn_timer += 1
+    if spawn_timer >= spawn_cfg.freq then
+        spawn_timer = 0
+        spawn_enemies(spawn_cfg)
+    end
+
     for e in all(enemies) do
         e:update()
-        if p_hit == false then
-            p_hit = check_overlap_circle(p.pos, e.pos, p.radius, e.radius)
-            if p_hit then p:take_damage(5, e) end
+        if e.visible then
+            if p_hit == false then
+                p_hit = check_overlap_circle(p.pos, e.pos, p.radius, e.radius)
+                if p_hit then p:take_damage(5, e) end
+            end
+        else
+            del(enemies, e)
         end
     end
 
+    -- attack cooldown + fire on left mouse
+    atk_timer += 1
+    if atk_timer >= player_stats.atk_spd then
+        atk_timer = 0
+        p:fire()
+    end
 
+    for f in all(fireballs) do
+        f:update()
+        if not f.active then
+            del(fireballs, f)
+        end
+    end
 end
-
 
 function _draw()
     cls(1)
-    local cam_x = flr(p.pos.x - 60)
-    local cam_y = flr(p.pos.y - 60)
+    cam_x = flr(p.pos.x - 60)
+    cam_y = flr(p.pos.y - 60)
     camera(cam_x, cam_y)
-    
+
     draw_map(cam_x, cam_y)
 
     p:draw()
-   
+
     for e in all(enemies) do
         e:draw()
+    end
+
+    -- fireballs
+    for f in all(fireballs) do
+        spr(35, flr(f.pos.x), flr(f.pos.y))
     end
 
     -- hud (screen space)
@@ -53,26 +93,34 @@ function draw_player_hud()
     -- panel
     rectfill(1, 1, 42, 10, 0)
     rect(1, 1, 42, 10, 5)
-    -- heart icon: 5x4 px at (3,3)
-    --  .x.x.
-    --  xxxxx
-    --  .xxx.
-    --  ..x..
-    pset(4, 3, 8) pset(6, 3, 8)
-    for i=3,7 do pset(i, 4, 8) end
-    pset(4, 5, 8) pset(5, 5, 8) pset(6, 5, 8)
-    pset(5, 6, 8)
-    -- hp bar to the right of the heart
-    draw_hp_bar(11, 4, p.hp, p.max_hp, 29, 4)
+
+    --heart shape
+    for i = 4, 8 do
+        if i != 6 then
+            pset(i, 3, 8) -- row 1
+        end
+        pset(i, 6, 8) -- row 4
+    end
+
+    for i = 3, 9 do
+        pset(i, 4, 8) -- row 2
+        pset(i, 5, 8) --row 3
+    end
+
+    for i = 5, 7 do
+        pset(i, 7, 8)
+    end
+    pset(6, 8, 8)
+
+    draw_hp_bar(11, 3, p.hp, p.max_hp, 29, 5)
 end
 
 function draw_map(x, y)
-    local start_tx = flr(x/8)
-    local start_ty = flr(y/8)
+    local start_tx = flr(x / 8)
+    local start_ty = flr(y / 8)
 
-    for i = 0, 16 do 
+    for i = 0, 16 do
         for j = 0, 16 do
-
             local tile_x = (start_tx + i) % 128
             local tile_y = (start_ty + j) % 32
 
@@ -91,9 +139,9 @@ end
 vec2 = {}
 vec2.__index = vec2
 
-function vec2:new(x,y)
+function vec2:new(x, y)
     local v = setmetatable({}, self)
-    
+
     v.x = x or 0
     v.y = y or 0
     return v
@@ -102,7 +150,6 @@ end
 function vec2:add(v)
     self.x += v.x
     self.y += v.y
-
 end
 
 function vec2:mag()
@@ -140,8 +187,10 @@ function draw_hp_bar(x, y, hp, max_hp, w, h)
     -- background
     rectfill(x, y, x + w, y + h, 1)
     -- fill color
-    local col = 10        -- yellow
-    if pct < 0.25 then col = 8 end  -- red
+    local col = 10
+    -- yellow
+    if pct < 0.25 then col = 8 end
+    -- red
     if fill > 0 then
         rectfill(x, y, x + fill, y + h, col)
     end
@@ -153,17 +202,17 @@ entity.__index = entity
 
 function entity:new(x, y, vel, hp, spr, radius)
     local e = setmetatable({}, self)
-    
+
     e.visible = true
-    
-    e.pos = vec2:new(x,y)
+
+    e.pos = vec2:new(x, y)
     e.x = x or 0
     e.y = y or 0
     e.vel = vel or 2
 
     e.hp = hp or 100
     e.max_hp = hp or 100
-    
+
     e.faces_right = false
     e.spr = spr
 
@@ -175,7 +224,6 @@ function entity:new(x, y, vel, hp, spr, radius)
     e.radius = radius or 2
     return e
 end
-
 
 function entity:take_damage(dmg)
     self.hp -= dmg
@@ -197,8 +245,8 @@ function entity:update()
 end
 
 function entity:draw()
-    if self.visible then 
-        spr(self.spr[self.anim_frame], flr(self.pos.x), flr(self.pos.y), 1, 1, self.faces_right) 
+    if self.visible then
+        spr(self.spr[self.anim_frame], flr(self.pos.x), flr(self.pos.y), 1, 1, self.faces_right)
 
         -- hp bar above sprite (only when damaged)
         if self.hp < self.max_hp then
@@ -206,7 +254,7 @@ function entity:draw()
             local by = flr(self.pos.y) - 4
             draw_hp_bar(bx, by, self.hp, self.max_hp, 7, 1)
         end
-    
+
         if debug_coll then
             local cx = flr(self.pos.x) + 4
             local cy = flr(self.pos.y) + 4
@@ -222,47 +270,43 @@ player = setmetatable({}, entity)
 player.__index = player
 
 function player:new()
-    local p = entity.new(self, 0, 0, 2, 100, {32,33,34})
+    local p = entity.new(self, 0, 0, 2, 100, { 32, 33, 34 })
 
     return p
 end
 
 function player:update()
-    
     --movement
     local dxy = vec2:new()
     self.anim_paused = true
 
-    if btn(0) then 
-        dxy.x = -1 
+    if btn(0) then
+        dxy.x = -1
         self.faces_right = false
     end
-    if btn(1) then 
+    if btn(1) then
         dxy.x = 1
         self.faces_right = true
     end
-    if btn(2) then 
-        dxy.y = -1 
-            end
-    if btn(3) then 
+    if btn(2) then
+        dxy.y = -1
+    end
+    if btn(3) then
         dxy.y = 1
     end
-    
+
     self.anim_paused = dxy:mag() == 0
-    
-    dxy:nrm() 
+
+    dxy:nrm()
     dxy:mul(self.vel)
     self.pos:add(dxy)
 
-
-
     entity.update(self)
-
 end
 
 function player:take_damage(dmg, src)
     entity.take_damage(self, dmg)
-    
+
     if self.visible == false then run() end
 
     local dxy = vec2:new(self.pos.x - src.pos.x, self.pos.y - src.pos.y)
@@ -277,27 +321,56 @@ function player:draw()
 end
 
 function player:fire()
-   
-
+    local target = get_nearest_enemy()
+    if target then
+        add(fireballs, fireball:new(self.pos, target.pos, 3, 1, 20))
+    end
 end
 
 --fireball
 fireball = {}
 fireball.__index = fireball
 
-function fireball:new(pos, tpos, vel, size)
+function fireball:new(pos, tpos, vel, size, dmg, max_dist)
     local f = setmetatable({}, self)
 
-    self.pos = pos or vec2:new()
-    self.tpos = tpos
-    self.vel = vel or 2
-    self.size = size or 1
+    f.pos = vec2:new(pos.x, pos.y)
+    f.vel = vel or 2
+    f.size = size or 1
+    f.radius = f.size * 4
+    f.dmg = dmg or 10
+    f.active = true
+    f.remaining = max_dist or 120
 
-    self.radius = size * 4
+    f.dir = vec2:new(tpos.x - pos.x, tpos.y - pos.y)
+    f.dir:nrm()
+    f.angle = atan2(f.dir.y, f.dir.x)
+
+    return f
 end
 
 function fireball:update()
+    if not self.active then return end
 
+    -- advance
+    self.pos:add(vec2:new(self.dir.x * self.vel, self.dir.y * self.vel))
+    self.remaining -= self.vel
+
+    if self.remaining <= 0 then
+        self.active = false
+        return
+    end
+
+    -- check hits against all live enemies
+    for e in all(enemies) do
+        if e.visible then
+            if check_overlap_circle(self.pos, e.pos, self.radius, e.radius) then
+                e:take_damage(self.dmg)
+                self.active = false
+                return
+            end
+        end
+    end
 end
 
 -->8
@@ -307,9 +380,41 @@ end
 dwarf = setmetatable({}, entity)
 dwarf.__index = dwarf
 
-function dwarf:new(x, y)
-    local d = entity.new(self, x, y, 0.4, 100, {48,49}, 4)
+function dwarf:new(x, y, spd_mul, hp_mul)
+    spd_mul = spd_mul or 1
+    hp_mul = hp_mul or 1
+    local d = entity.new(self, x, y, 0.4 * spd_mul, flr(100 * hp_mul), { 48, 49 }, 4)
     return d
+end
+
+-- spawns a wave of enemies around the player
+-- cfg: { freq, amount, spd_mul, hp_mul }
+function spawn_enemies(cfg)
+    for i = 1, cfg.amount do
+        local angle = rnd(1)
+        local dist = 90 -- spawn off-screen edge
+        local sx = p.pos.x + cos(angle) * dist
+        local sy = p.pos.y + sin(angle) * dist
+        add(enemies, dwarf:new(sx, sy, cfg.spd_mul, cfg.hp_mul))
+    end
+end
+
+-- returns the nearest visible enemy to the player, or nil
+function get_nearest_enemy()
+    local nearest = nil
+    local best_sq = 32767
+    for e in all(enemies) do
+        if e.visible then
+            local dx = e.pos.x - p.pos.x
+            local dy = e.pos.y - p.pos.y
+            local sq = dx * dx + dy * dy
+            if sq < best_sq then
+                best_sq = sq
+                nearest = e
+            end
+        end
+    end
+    return nearest
 end
 
 function dwarf:update()
@@ -327,6 +432,7 @@ function dwarf:update()
 end
 
 --
+
 __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -344,14 +450,14 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000022220c0022220002222000099000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0c02222004022220c022220000999900000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-040363200403632040363200099a9990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0406662006066620406662000999a990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-0622222004222220622222000a9999a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-04022220040222204022220000a99a00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-04022220040222204022220000aaaa00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-040222220002222240222220000aa000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+000022220c0022220002222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0c02222004022220c022220000099000000000000000000000000000000000000000000000000000006006000000000000000000000000000000000000000000
+04036320040363204036320000999900000000000000000000000000000000000000000000000000060000600000000000000000000000000000000000000000
+040666200606662040666200099a9990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0622222004222220622222000999a990000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+04022220040222204022220000999900000000000000000000000000000000000000000000000000060000600000000000000000000000000000000000000000
+04022220040222204022220000099000000000000000000000000000000000000000000000000000006006000000000000000000000000000000000000000000
+04022222000222224022222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00008880000088800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00088808000888080000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00022200000222000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
