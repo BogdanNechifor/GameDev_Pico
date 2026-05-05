@@ -22,7 +22,6 @@ spawn_rate = 20
 spawn_timer = 0
 
 function _update()
-    -- spawn enemies
     spawn_timer -= 1
     if spawn_timer <= 0 and #enemies < 30 then
         local ang = rnd(1)
@@ -85,16 +84,15 @@ function _draw()
         f:draw()
     end
 
-    -- hud (screen space)
+    -- hud
     camera()
     draw_player_hud()
 end
 
 function draw_player_hud()
-    -- panel
     rectfill(1, 1, 42, 10, 0)
     rect(1, 1, 42, 10, 5)
-    -- heart icon
+
     pset(4, 3, 8)
     pset(5, 3, 8)
     pset(7, 3, 8)
@@ -111,7 +109,7 @@ function draw_player_hud()
         pset(i, 7, 8)
     end
     pset(6, 8, 8)
-    -- hp bar
+
     draw_hp_bar(11, 3, p.hp, p.max_hp, 29, 5)
 end
 

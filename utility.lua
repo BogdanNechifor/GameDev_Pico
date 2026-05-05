@@ -39,13 +39,11 @@ function vec2:mul(x)
 end
 
 --collision
-
 function check_overlap_circle(pos1, pos2, r1, r2)
     local dx = abs(pos1.x - pos2.x)
     local dy = abs(pos1.y - pos2.y)
     local r = r1 + r2
 
-    -- quick exit for far away objects to prevent overflow
     if dx > r or dy > r then return false end
 
     local sq_dist = (dx * dx) + (dy * dy)
@@ -57,13 +55,9 @@ end
 function draw_hp_bar(x, y, hp, max_hp, w, h)
     local pct = mid(0, hp / max_hp, 1)
     local fill = flr(w * pct)
-    -- background
     rectfill(x, y, x + w, y + h, 1)
-    -- fill color
     local col = 10
-    -- yellow
     if pct < 0.25 then col = 8 end
-    -- red
     if fill > 0 then
         rectfill(x, y, x + fill, y + h, col)
     end
@@ -103,7 +97,7 @@ function rspr(s, x, y, a, w, h)
     end
 end
 
--- resolve overlap between two entities
+-- resolve overlap between two entities - LLM assisted
 function resolve_overlap(e1, e2)
     local p1_x, p1_y = e1.pos.x + e1.off_x, e1.pos.y + e1.off_y
     local p2_x, p2_y = e2.pos.x + e2.off_x, e2.pos.y + e2.off_y
@@ -111,19 +105,15 @@ function resolve_overlap(e1, e2)
     local dx = p1_x - p2_x
     local dy = p1_y - p2_y
 
-    -- quick AABB check for speed
     local r = e1.radius + e2.radius
     if abs(dx) > r or abs(dy) > r then return end
 
-    -- safe mag
     local d_vec = vec2:new(dx, dy)
     local d = d_vec:mag()
 
     if d < r then
-        -- overlap found
         local push = (r - d) / 2
         if d == 0 then
-            -- exact same spot, push in random direction
             local ang = rnd(1)
             e1.pos.x += cos(ang) * push
             e1.pos.y += sin(ang) * push

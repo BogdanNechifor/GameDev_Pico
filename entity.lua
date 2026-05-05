@@ -69,11 +69,8 @@ function entity:draw()
         end
 
         spr(self.spr[self.anim_frame], flr(self.pos.x), flr(self.pos.y), self.w, self.h, self.faces_right)
-
-        -- reset palette
         pal()
 
-        -- hp bar above sprite (only when damaged)
         if self.hp < self.max_hp and self != p then
             local bx = flr(self.pos.x)
             local by = flr(self.pos.y) - 4

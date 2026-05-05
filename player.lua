@@ -11,7 +11,6 @@ function player:new()
 end
 
 function player:update()
-    -- shooting
     self.fire_timer -= 1
     if self.fire_timer <= 0 then
         self:fire()
@@ -93,7 +92,7 @@ function player:fire()
         local e_cx = closest_e.pos.x + closest_e.off_x
         local e_cy = closest_e.pos.y + closest_e.off_y
         local dir = vec2:new(e_cx - p_cx, e_cy - p_cy)
-        -- fire from player center (offset to center the 8x8 fireball sprite)
+
         cast_fireball(vec2:new(p_cx - 4, p_cy - 4), dir, 3, "player", self.fire_damage)
     end
 end
