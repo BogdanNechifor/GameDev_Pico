@@ -7,7 +7,7 @@ function entity:new(x, y, vel, hp, spr, radius, w, h)
 
     e.visible = true
 
-    e.pos = vec2:new(x, y)
+    e.pos = { x = x, y = y }
     e.x = x or 0
     e.y = y or 0
     e.vel = vel or 2

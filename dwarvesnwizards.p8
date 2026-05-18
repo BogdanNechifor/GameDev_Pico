@@ -9,15 +9,29 @@ __lua__
 
 --debug
 debug_coll = false
+debug_stress = false
 
 enemies = {}
 fireballs = {}
 
+upgrade_ui_info = {
+    { id="speed", spr=128, max=9 },
+    { id="haste", spr=129, max=11 },
+    { id="multishot", spr=130, max=2 },
+    { id="crit", spr=131, max=9 },
+    { id="splash", spr=132, max=9 },
+    { id="damage", spr=133, max=9 },
+    { id="vitality", spr=134, max=nil }
+}
+
 game_state = "play"
 level_up_choices = {}
 selected_choice = 1
+prev_m_click = false
+prev_m_right = false
 
 function _init()
+    poke(0x5f2d, 1) -- enable mouse
     p = player:new()
     add(enemies, dwarf:new(15, 15))
     game_timer = 0
@@ -28,14 +42,20 @@ spawn_rate = 90
 spawn_timer = 0
 
 function _update()
+    local mx = stat(32)
+    local my = stat(33)
+    local m_click = (stat(34) & 1) != 0
+    local m_right = (stat(34) & 2) != 0
+    local clicked = m_click and not prev_m_click
+    local right_clicked = m_right and not prev_m_right
+    prev_m_click = m_click
+    prev_m_right = m_right
+
     if game_state == "level_up" then
-        if btnp(2) then
-            selected_choice = 1
-        end
-        if btnp(3) then
-            selected_choice = 2
-        end
-        if btnp(4) or btnp(5) then
+        if btnp(2) then selected_choice = 1 end
+        if btnp(3) then selected_choice = 2 end
+
+        if right_clicked then
             apply_upgrade(level_up_choices[selected_choice])
         end
         
@@ -45,7 +65,7 @@ function _update()
     end
 
     if game_state == "game_over" then
-        if btnp(4) or btnp(5) then
+        if right_clicked then
             restart_game()
         end
         return
@@ -53,8 +73,15 @@ function _update()
 
     survival_timer += 1
 
-    local active_cap = 10 + (p.level - 1) * 2
+    -- Cap scales from 10 to 200 over 10 minutes (18000 frames)
+    local time_ratio = mid(0, survival_timer / 18000, 1)
+    local active_cap = flr(10 + time_ratio * 190)
     local current_spawn_rate = max(1, flr(150 / active_cap))
+    
+    if debug_stress then
+        active_cap = 272
+        current_spawn_rate = 1
+    end
 
     spawn_timer -= 1
     if spawn_timer <= 0 and #enemies < active_cap then
@@ -80,30 +107,46 @@ function _update()
 
     for i = #enemies, 1, -1 do
         local e = enemies[i]
-        e:update()
+        e:update(i)
         if e.hp <= 0 then
-            del(enemies, e)
+            enemies[i] = enemies[#enemies]
+            enemies[#enemies] = nil
             p:gain_xp(e.xp_value or 15, e.pos)
+            sfx(1)
         elseif p_hit == false then
-            local p_cp = { x = p.pos.x + p.off_x, y = p.pos.y + p.off_y }
-            local e_cp = { x = e.pos.x + e.off_x, y = e.pos.y + e.off_y }
-            p_hit = check_overlap_circle(p_cp, e_cp, p.radius, e.radius)
+            local px = p.pos.x + p.off_x
+            local py = p.pos.y + p.off_y
+            local ex = e.pos.x + e.off_x
+            local ey = e.pos.y + e.off_y
+            p_hit = check_overlap_circle(px, py, ex, ey, p.radius, e.radius)
             if p_hit then p:take_damage(5, e) end
         end
     end
 
-    -- prevent enemies from stacking
+    -- fast O(N) spatial grid to prevent insane clumps
+    local grid = {}
     for i = 1, #enemies do
-        local e1 = enemies[i]
-        for j = i + 1, #enemies do
-            resolve_overlap(e1, enemies[j])
+        local e = enemies[i]
+        -- Divide space into 12x12 cells. Multiply Y by 128 to create a unique integer key
+        local idx = flr(e.pos.x / 12) + flr(e.pos.y / 12) * 128
+        local other = grid[idx]
+        
+        if other then
+            -- if cell is occupied, push them apart
+            resolve_overlap(e, other)
+        else
+            -- otherwise, claim the cell
+            grid[idx] = e
         end
     end
 
     for i = #fireballs, 1, -1 do
         local f = fireballs[i]
         f:update()
-        if not f.active then del(fireballs, f) end
+        if not f.active then
+            fireballs[i] = fireballs[#fireballs]
+            fireballs[#fireballs] = nil
+        end
     end
 
     update_floating_texts()
@@ -134,7 +177,18 @@ function _draw()
     -- hud
     camera()
     draw_player_hud()
+
+    -- draw crosshair
+    local mx = stat(32)
+    local my = stat(33)
+    circ(mx, my, 2, 8)
+    pset(mx, my, 8)
     draw_survival_timer()
+
+    if debug_stress then
+        local col = (flr(survival_timer / 15) % 2 == 0) and 8 or 9
+        print("stress test active", 4, 121, col)
+    end
 
     if game_state == "level_up" then
         draw_level_up_screen()
@@ -200,6 +254,27 @@ function draw_player_hud()
 
     -- level text badge
     print("l"..p.level, 43, 4, 10)
+
+    -- upgrade UI
+    local start_x = 56
+    for i=1, #upgrade_ui_info do
+        local ui = upgrade_ui_info[i]
+        local count = p.upgrades[ui.id] or 0
+        local cx = start_x + (i-1)*10
+        local cy = 2
+        spr(ui.spr, cx, cy)
+        
+        local col = 5 -- grey
+        if count > 0 then
+            col = 7 -- white
+            if ui.max and count >= ui.max then
+                col = 11 -- green
+            end
+        end
+        
+        -- draw number below
+        print(count, cx + 2, cy + 9, col)
+    end
 end
 
 function draw_level_up_screen()
@@ -213,22 +288,48 @@ function draw_level_up_screen()
     local c1 = level_up_choices[1]
     local c2 = level_up_choices[2]
 
-    -- top option card
-    local col1 = selected_choice == 1 and 10 or 5
-    rectfill(22, 44, 106, 66, 1)
-    rect(22, 44, 106, 66, col1)
-    print_centered_text(c1.title, 64, 47, selected_choice == 1 and 7 or 6)
-    print_centered_text(c1.desc, 64, 55, selected_choice == 1 and 11 or 5)
-
-    -- bottom option card
-    local col2 = selected_choice == 2 and 10 or 5
-    rectfill(22, 72, 106, 94, 1)
-    rect(22, 72, 106, 94, col2)
-    print_centered_text(c2.title, 64, 75, selected_choice == 2 and 7 or 6)
-    print_centered_text(c2.desc, 64, 83, selected_choice == 2 and 11 or 5)
+    -- Draw cards using our new helper
+    draw_choice_card(22, 44, 106, 66, c1, selected_choice == 1)
+    draw_choice_card(22, 72, 106, 94, c2, selected_choice == 2)
 
     print_centered_text("up/down to navigate", 64, 100, 6)
-    print_centered_text("press z/x to select", 64, 106, 6)
+    print_centered_text("right-click to select", 64, 106, 6)
+end
+
+function draw_choice_card(x1, y1, x2, y2, choice, is_selected)
+    local bg_col = 1 -- dark blue
+    local border_col = is_selected and 10 or 5
+    
+    -- Highlight overrides
+    if choice.id == "multishot" then
+        border_col = is_selected and 10 or 9 -- Gold/Orange
+    elseif choice.id == "vitality" then
+        border_col = is_selected and 11 or 3 -- Green/Dark Green
+    end
+
+    rectfill(x1, y1, x2, y2, bg_col)
+    rect(x1, y1, x2, y2, border_col)
+    
+    -- Draw double frame if special
+    if choice.id == "multishot" then
+        rect(x1 - 1, y1 - 1, x2 + 1, y2 + 1, 10)
+    elseif choice.id == "vitality" then
+        rect(x1 - 1, y1 - 1, x2 + 1, y2 + 1, 11)
+    end
+
+    -- Text colors
+    local title_col = is_selected and 7 or 6
+    local desc_col = is_selected and 11 or 5
+    
+    if choice.id == "multishot" then
+        title_col = is_selected and 10 or 9
+    elseif choice.id == "vitality" then
+        title_col = is_selected and 11 or 3
+    end
+
+    local cy = flr((y1 + y2) / 2)
+    print_centered_text(choice.title, 64, cy - 5, title_col)
+    print_centered_text(choice.desc, 64, cy + 3, desc_col)
 end
 
 function draw_game_over_screen()
@@ -250,7 +351,7 @@ function draw_game_over_screen()
     
     print_centered_text(timer_str, 64, 56, 11)
     print_centered_text("level reached: l"..p.level, 64, 70, 15)
-    print_centered_text("press z/x to restart", 64, 90, 6)
+    print_centered_text("right-click to restart", 64, 90, 6)
 end
 
 function restart_game()
@@ -327,6 +428,14 @@ __gfx__
 55555555555655555555566556655555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 55555555555555555555665555555555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 55555555555555555555555555555555000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+0005555500000a900000800000777700008888000000006608800880000000000000000000000000000000000000000000000000000000000000000000000000
+00004444000aa9000008800007888870089999800000066688888888000000000000000000000000000000000000000000000000000000000000000000000000
+0000444409aa90000089980078777787899aa9980000666088888888000000000000000000000000000000000000000000000000000000000000000000000000
+000055449aaaa900089999807878878789aaaa986006660088888888000000000000000000000000000000000000000000000000000000000000000000000000
+00044444009aaaa9099a99907878878789aaaa980666600088888888000000000000000000000000000000000000000000000000000000000000000000000000
+444444440009aa900999a99078777787899aa9980066000008888880000000000000000000000000000000000000000000000000000000000000000000000000
+44444555009aa0000099990007888870089999800406000000888800000000000000000000000000000000000000000000000000000000000000000000000000
+5555505509a000000009900000777700008888004000600000088000000000000000000000000000000000000000000000000000000000000000000000000000
 __map__
 7070705252525252525252525252525260525252525252525252525252505252707070707070707070525252525252525252525252525252525252525252526052525252525252526052525252525252525252525252525252526060525252605252525252525252525252526052525252525252525252525252527070707070
 7070525252525252605252525252525252525252525252525252525252525252707070707070707070525260525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252605252525260525252524052605252525252525252525252527070707070
@@ -360,3 +469,7 @@ __map__
 7052526040525252525252525260525252525252525252525252525252525252525252525252525252525252605252525252525252525260525252525252525252525252525252525252525252525252526052525252525252525252525252525252525252525252525252605252525252525252525252525252525252707070
 7070404052525252525252525252525252525252525252525252525252525250525270707070525252525252525252525252525252525252525252525252525252525252525252525252525252605252525252525252525252525252525260525252525252525252525252525252525252525260525252525252527070707070
 7070705252525250525252525252525240525252525252525252525252525252527070707070707070525260525252525252525252525252525252525252525252525252525252605252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252525252527070707070
+__sfx__
+01010000005502755030550375503c5503c55019550045502a5502055013550205502855030550285501e55015550115500f55011550145501b550225502c5503255035550235502055023550255502555025550
+a90000001521217212192121b2121d2121e2121e21222212292122f2122c212272121e2121e21220212202122021221212212122121221212212122121220212202121f2121e2121c2121a212172121321211212
+9102000018273212631d2461a22621556000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
