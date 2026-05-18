@@ -3,11 +3,50 @@ player = setmetatable({}, entity)
 player.__index = player
 
 function player:new()
-    local p = entity.new(self, 0, 0, 2, 100, { 32, 33, 34 })
+    local p = entity.new(self, 0, 0, 1.0, 100, { 32, 33, 34 })
     p.firerate = 45
     p.fire_timer = 0
     p.fire_damage = 25
+    p.level = 1
+    p.xp = 0
+    p.max_xp = 50
+    p.level_cap = 30
+    p.fireballs_count = 1
+    p.crit_chance = 0.01
+    p.splash_ratio = 0.2
+    p.splash_radius = 16
+    p.damage_upgrades = 0
     return p
+end
+
+function player:gain_xp(amount, spawn_pos)
+    if self.level >= self.level_cap then return end
+
+    self.xp += amount
+    if spawn_pos then
+        add_floating_text("+"..amount.." xp", spawn_pos.x, spawn_pos.y, 11)
+    end
+
+    if self.xp >= self.max_xp then
+        self:level_up()
+    end
+end
+
+function player:level_up()
+    self.level += 1
+    self.xp -= self.max_xp
+    self.max_xp = flr(50 * (1.12 ^ (self.level - 1)))
+    if self.level >= self.level_cap then
+        self.xp = 0
+    end
+
+    add_floating_text("level up!", self.pos.x, self.pos.y - 8, 10)
+    trigger_level_up_effect(self.pos)
+    sfx(0)
+
+    level_up_choices = get_level_up_options()
+    selected_choice = 1
+    game_state = "level_up"
 end
 
 function player:update()
@@ -47,8 +86,6 @@ end
 
 function player:take_damage(dmg, src)
     entity.take_damage(self, dmg)
-
-    if self.visible == false then run() end
 
     if src == nil then return end
 
@@ -93,6 +130,14 @@ function player:fire()
         local e_cy = closest_e.pos.y + closest_e.off_y
         local dir = vec2:new(e_cx - p_cx, e_cy - p_cy)
 
-        cast_fireball(vec2:new(p_cx - 4, p_cy - 4), dir, 3, "player", self.fire_damage)
+        local base_ang = atan2(dir.x, dir.y)
+        local spread = 0.05
+        local start_ang = base_ang - (self.fireballs_count - 1) * spread / 2
+
+        for i = 0, self.fireballs_count - 1 do
+            local ang = start_ang + i * spread
+            local f_dir = vec2:new(cos(ang), sin(ang))
+            cast_fireball(vec2:new(p_cx - 4, p_cy - 4), f_dir, 3, "player", self.fire_damage)
+        end
     end
 end

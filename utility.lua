@@ -129,3 +129,177 @@ function resolve_overlap(e1, e2)
         end
     end
 end
+
+-- UI and Progression Utilities
+floating_texts = {}
+level_effects = {}
+
+function print_centered_text(txt, cx, y, col)
+    local w = #txt * 4
+    print(txt, cx - flr(w / 2), y, col or 7)
+end
+
+function draw_xp_bar(x, y, xp, max_xp, w, h)
+    local pct = mid(0, xp / max_xp, 1)
+    local fill = flr(w * pct)
+    rectfill(x, y, x + w, y + h, 1) -- dark blue bg
+    
+    if p.level >= p.level_cap then
+        rectfill(x, y, x + w, y + h, 11) -- full green bar at max level
+        print_centered_text("max", x + flr(w / 2), y - 1, 0)
+        print_centered_text("max", x + flr(w / 2) - 1, y - 2, 7)
+    elseif fill > 0 then
+        rectfill(x, y, x + fill, y + h, 11) -- emerald green fill
+    end
+end
+
+function get_level_up_options()
+    local available = {}
+    
+    -- Check speed
+    if p.vel < 1.9 then
+        add(available, { id = "speed", title = "speed", desc = "+0.15 speed" })
+    end
+    
+    -- Check haste
+    if p.firerate > 15 then
+        add(available, { id = "haste", title = "haste", desc = "+10% fire rate" })
+    end
+    
+    -- Check multishot
+    if p.fireballs_count < 3 and rnd(1) < 0.5 then
+        add(available, { id = "multishot", title = "multishot", desc = "+1 fireball" })
+    end
+
+    -- Check crit
+    if p.crit_chance < 0.25 then
+        add(available, { id = "crit", title = "crit", desc = "+5% crit chance" })
+    end
+    
+    -- Check splash
+    if p.splash_ratio < 0.7 then
+        add(available, { id = "splash", title = "splash", desc = "+10% splash dmg" })
+    end
+    
+    -- Check damage (up to 10 upgrades)
+    if (p.damage_upgrades or 0) < 10 then
+        add(available, { id = "damage", title = "might", desc = "+2 fireball dmg" })
+    end
+    
+    -- Check vitality (uncapped)
+    add(available, { id = "vitality", title = "vitality", desc = "max hp & heal" })
+
+    -- Pick 2 distinct options randomly
+    local opt1 = available[flr(rnd(#available)) + 1]
+    del(available, opt1)
+    local opt2 = available[flr(rnd(#available)) + 1]
+    
+    return { opt1, opt2 }
+end
+
+function apply_upgrade(choice)
+    local id = choice.id
+    if id == "speed" then
+        p.vel = min(1.9, p.vel + 0.15)
+    elseif id == "haste" then
+        p.firerate = max(15, flr(p.firerate * 0.9))
+    elseif id == "multishot" then
+        p.fireballs_count = min(3, p.fireballs_count + 1)
+    elseif id == "crit" then
+        p.crit_chance = min(0.25, p.crit_chance + 0.05)
+    elseif id == "splash" then
+        p.splash_ratio = min(0.7, p.splash_ratio + 0.1)
+    elseif id == "damage" then
+        p.damage_upgrades = (p.damage_upgrades or 0) + 1
+        p.fire_damage += 2
+    elseif id == "vitality" then
+        p.max_hp += 20
+        p.hp = p.max_hp
+    end
+
+    -- Return to play state
+    game_state = "play"
+
+    -- Check if we level up again
+    if p.level < p.level_cap and p.xp >= p.max_xp then
+        p:level_up()
+    end
+end
+
+-- VFX: Floating Text
+function add_floating_text(txt, x, y, col)
+    add(floating_texts, {
+        text = txt,
+        x = x,
+        y = y,
+        col = col or 7,
+        timer = 30
+    })
+end
+
+function update_floating_texts()
+    for ft in all(floating_texts) do
+        ft.y -= 0.5
+        ft.timer -= 1
+        if ft.timer <= 0 then
+            del(floating_texts, ft)
+        end
+    end
+end
+
+function draw_floating_texts()
+    for ft in all(floating_texts) do
+        -- black shadow for contrast
+        print(ft.text, flr(ft.x) - 4 + 1, flr(ft.y) + 1, 0)
+        print(ft.text, flr(ft.x) - 4, flr(ft.y), ft.col)
+    end
+end
+
+-- VFX: Level Up Concentric Rings
+function trigger_level_up_effect(pos)
+    add(level_effects, {
+        type = "levelup",
+        x = pos.x + 4,
+        y = pos.y + 4,
+        r = 1,
+        max_r = 25,
+        timer = 20
+    })
+end
+
+function trigger_explosion_effect(x, y, radius)
+    add(level_effects, {
+        type = "explosion",
+        x = x,
+        y = y,
+        r = 1,
+        max_r = radius or 24,
+        timer = 8
+    })
+end
+
+function update_level_effects()
+    for le in all(level_effects) do
+        if le.type == "levelup" then
+            le.r += 1.5
+        else -- explosion
+            le.r = le.max_r * (1 - (le.timer / 8))
+        end
+        le.timer -= 1
+        if le.timer <= 0 then
+            del(level_effects, le)
+        end
+    end
+end
+
+function draw_level_effects()
+    for le in all(level_effects) do
+        if le.type == "levelup" then
+            circ(flr(le.x), flr(le.y), flr(le.r), 10)
+            circ(flr(le.x), flr(le.y), flr(le.r - 3), 9)
+        else -- explosion
+            local col = le.timer > 4 and 9 or (le.timer > 2 and 10 or 15)
+            circfill(flr(le.x), flr(le.y), flr(le.r), col)
+        end
+    end
+end

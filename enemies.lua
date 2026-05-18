@@ -5,10 +5,15 @@ dwarf = setmetatable({}, entity)
 dwarf.__index = dwarf
 
 function dwarf:new(x, y)
-    local d = entity.new(self, x, y, 0.4, 100, { 41, 42, 43, 42 }, 4, 1, 2)
+    local time_ratio = mid(0, (survival_timer or 0) / 18000, 1)
+    local hp_multiplier = 1 + 0.5 * time_ratio
+    local base_hp = flr(100 * hp_multiplier)
+
+    local d = entity.new(self, x, y, 0.8, base_hp, { 41, 42, 43, 42 }, 4, 1, 2)
     d.anim_paused = false
     d.off_y = 11
     d.idle_frame = 2
+    d.xp_value = 15
     return d
 end
 
@@ -19,6 +24,17 @@ function dwarf:update()
     local e_cy = self.pos.y + self.off_y
 
     local dxy = vec2:new(p_cx - e_cx, p_cy - e_cy)
+    local dist = dxy:mag()
+
+    -- Teleport if too far away (despawn & respawn optimization)
+    if dist > 165 then
+        local ang = rnd(1)
+        local spawn_dist = 90 + rnd(40)
+        self.pos.x = p.pos.x + cos(ang) * spawn_dist
+        self.pos.y = p.pos.y + sin(ang) * spawn_dist
+        return
+    end
+
     dxy:nrm()
     dxy:mul(self.vel)
     self.pos:add(dxy)
@@ -36,13 +52,18 @@ shaman = setmetatable({}, entity)
 shaman.__index = shaman
 
 function shaman:new(x, y)
-    local s = entity.new(self, x, y, 0.8, 100, { 9, 10, 11, 10 }, 4, 1, 2)
+    local time_ratio = mid(0, (survival_timer or 0) / 18000, 1)
+    local hp_multiplier = 1 + 0.5 * time_ratio
+    local base_hp = flr(100 * hp_multiplier)
+
+    local s = entity.new(self, x, y, 1.2, base_hp, { 9, 10, 11, 10 }, 4, 1, 2)
     s.anim_paused = false
     s.off_y = 11
-    s.chase_range = 60
+    s.chase_range = 60 * (0.7 + rnd(0.4))
     s.idle_frame = 2
     s.firerate = 90
     s.fire_timer = rnd(s.firerate)
+    s.xp_value = 35
     return s
 end
 
@@ -54,6 +75,15 @@ function shaman:update()
 
     local dxy = vec2:new(p_cx - e_cx, p_cy - e_cy)
     local dist = dxy:mag()
+
+    -- Teleport if too far away (despawn & respawn optimization)
+    if dist > 165 then
+        local ang = rnd(1)
+        local spawn_dist = 90 + rnd(40)
+        self.pos.x = p.pos.x + cos(ang) * spawn_dist
+        self.pos.y = p.pos.y + sin(ang) * spawn_dist
+        return
+    end
 
     -- chase while distance is greater than range
     if dist > self.chase_range then

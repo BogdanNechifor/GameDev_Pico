@@ -34,12 +34,17 @@ function entity:new(x, y, vel, hp, spr, radius, w, h)
     return e
 end
 
-function entity:take_damage(dmg)
+function entity:take_damage(dmg, is_crit)
     if self.invincibility_timer > 0 then return end
 
     self.hp -= dmg
     self.visible = self.hp > 0
     self.invincibility_timer = 3
+
+    -- Spawn floating damage number
+    local col = (self == p) and 8 or (is_crit and 10 or 15) -- red for player, yellow for crit, peach for enemy
+    local text = is_crit and dmg.."!" or ""..dmg
+    add_floating_text(text, self.pos.x, self.pos.y - 4, col)
 end
 
 function entity:update()

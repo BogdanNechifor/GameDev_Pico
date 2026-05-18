@@ -13,17 +13,51 @@ debug_coll = false
 enemies = {}
 fireballs = {}
 
+game_state = "play"
+level_up_choices = {}
+selected_choice = 1
+
 function _init()
     p = player:new()
     add(enemies, dwarf:new(15, 15))
+    game_timer = 0
+    survival_timer = 0
 end
 
-spawn_rate = 20
+spawn_rate = 90
 spawn_timer = 0
 
 function _update()
+    if game_state == "level_up" then
+        if btnp(2) then
+            selected_choice = 1
+        end
+        if btnp(3) then
+            selected_choice = 2
+        end
+        if btnp(4) or btnp(5) then
+            apply_upgrade(level_up_choices[selected_choice])
+        end
+        
+        update_floating_texts()
+        update_level_effects()
+        return
+    end
+
+    if game_state == "game_over" then
+        if btnp(4) or btnp(5) then
+            restart_game()
+        end
+        return
+    end
+
+    survival_timer += 1
+
+    local active_cap = 10 + (p.level - 1) * 2
+    local current_spawn_rate = max(1, flr(150 / active_cap))
+
     spawn_timer -= 1
-    if spawn_timer <= 0 and #enemies < 30 then
+    if spawn_timer <= 0 and #enemies < active_cap then
         local ang = rnd(1)
         local dist = 90 + rnd(50)
         local sx = p.pos.x + cos(ang) * dist
@@ -34,16 +68,22 @@ function _update()
         else
             add(enemies, dwarf:new(sx, sy))
         end
-        spawn_timer = spawn_rate
+        spawn_timer = current_spawn_rate
     end
 
     local p_hit = false
     p:update()
+    if p.hp <= 0 then
+        game_state = "game_over"
+        return
+    end
 
-    for e in all(enemies) do
+    for i = #enemies, 1, -1 do
+        local e = enemies[i]
         e:update()
         if e.hp <= 0 then
             del(enemies, e)
+            p:gain_xp(e.xp_value or 15, e.pos)
         elseif p_hit == false then
             local p_cp = { x = p.pos.x + p.off_x, y = p.pos.y + p.off_y }
             local e_cp = { x = e.pos.x + e.off_x, y = e.pos.y + e.off_y }
@@ -60,10 +100,14 @@ function _update()
         end
     end
 
-    for f in all(fireballs) do
+    for i = #fireballs, 1, -1 do
+        local f = fireballs[i]
         f:update()
         if not f.active then del(fireballs, f) end
     end
+
+    update_floating_texts()
+    update_level_effects()
 end
 
 function _draw()
@@ -84,15 +128,47 @@ function _draw()
         f:draw()
     end
 
+    draw_floating_texts()
+    draw_level_effects()
+
     -- hud
     camera()
     draw_player_hud()
+    draw_survival_timer()
+
+    if game_state == "level_up" then
+        draw_level_up_screen()
+    elseif game_state == "game_over" then
+        draw_game_over_screen()
+    end
+end
+
+function draw_survival_timer()
+    local sec = flr(survival_timer / 30)
+    local m = flr(sec / 60)
+    local s = sec % 60
+    local m_str = m < 10 and "0"..m or ""..m
+    local s_str = s < 10 and "0"..s or ""..s
+    local timer_str = m_str..":"..s_str
+    
+    local tx = 4
+    local ty = 22
+    
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            if dx != 0 or dy != 0 then
+                print(timer_str, tx + dx, ty + dy, 0)
+            end
+        end
+    end
+    print(timer_str, tx, ty, 7)
 end
 
 function draw_player_hud()
-    rectfill(1, 1, 42, 10, 0)
-    rect(1, 1, 42, 10, 5)
+    rectfill(1, 1, 54, 18, 0)
+    rect(1, 1, 54, 18, 5)
 
+    -- heart icon
     pset(4, 3, 8)
     pset(5, 3, 8)
     pset(7, 3, 8)
@@ -101,7 +177,6 @@ function draw_player_hud()
         pset(i, 4, 8)
         pset(i, 5, 8)
     end
-
     for i = 4, 8 do
         pset(i, 6, 8)
     end
@@ -110,7 +185,81 @@ function draw_player_hud()
     end
     pset(6, 8, 8)
 
+    -- hp bar
     draw_hp_bar(11, 3, p.hp, p.max_hp, 29, 5)
+
+    -- xp icon (green diamond)
+    pset(6, 11, 11)
+    pset(5, 12, 11)
+    pset(6, 12, 11)
+    pset(7, 12, 11)
+    pset(6, 13, 11)
+
+    -- xp bar
+    draw_xp_bar(11, 11, p.xp, p.max_xp, 29, 3)
+
+    -- level text badge
+    print("l"..p.level, 43, 4, 10)
+end
+
+function draw_level_up_screen()
+    rectfill(14, 20, 114, 116, 0)
+    rect(14, 20, 114, 116, 5)
+    rect(15, 21, 113, 115, 7)
+
+    print_centered_text("level up!", 64, 26, 10)
+    print_centered_text("choose an upgrade", 64, 34, 7)
+
+    local c1 = level_up_choices[1]
+    local c2 = level_up_choices[2]
+
+    -- top option card
+    local col1 = selected_choice == 1 and 10 or 5
+    rectfill(22, 44, 106, 66, 1)
+    rect(22, 44, 106, 66, col1)
+    print_centered_text(c1.title, 64, 47, selected_choice == 1 and 7 or 6)
+    print_centered_text(c1.desc, 64, 55, selected_choice == 1 and 11 or 5)
+
+    -- bottom option card
+    local col2 = selected_choice == 2 and 10 or 5
+    rectfill(22, 72, 106, 94, 1)
+    rect(22, 72, 106, 94, col2)
+    print_centered_text(c2.title, 64, 75, selected_choice == 2 and 7 or 6)
+    print_centered_text(c2.desc, 64, 83, selected_choice == 2 and 11 or 5)
+
+    print_centered_text("up/down to navigate", 64, 100, 6)
+    print_centered_text("press z/x to select", 64, 106, 6)
+end
+
+function draw_game_over_screen()
+    rectfill(14, 25, 114, 105, 0)
+    rect(14, 25, 114, 105, 8)
+    rect(15, 26, 113, 104, 7)
+
+    print_centered_text("game over", 64, 32, 8)
+    print_centered_text("game over", 64, 31, 10)
+    
+    print_centered_text("you survived for:", 64, 46, 7)
+    
+    local sec = flr(survival_timer / 30)
+    local m = flr(sec / 60)
+    local s = sec % 60
+    local m_str = m < 10 and "0"..m or ""..m
+    local s_str = s < 10 and "0"..s or ""..s
+    local timer_str = m_str..":"..s_str
+    
+    print_centered_text(timer_str, 64, 56, 11)
+    print_centered_text("level reached: l"..p.level, 64, 70, 15)
+    print_centered_text("press z/x to restart", 64, 90, 6)
+end
+
+function restart_game()
+    enemies = {}
+    fireballs = {}
+    game_state = "play"
+    selected_choice = 1
+    survival_timer = 0
+    _init()
 end
 
 __gfx__

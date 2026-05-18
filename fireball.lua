@@ -21,6 +21,12 @@ function fireball:new(pos, dir, speed, team, dmg, life)
 
     f.life_timer = life or 120
 
+    if team == "player" then
+        f.crit_chance = p.crit_chance or 0.01
+        f.splash_ratio = p.splash_ratio or 0.2
+        f.splash_radius = p.splash_radius or 16
+    end
+
     return f
 end
 
@@ -43,7 +49,43 @@ function fireball:update()
             local f_cp = { x = self.pos.x + 4, y = self.pos.y + 4 }
             local e_cp = { x = e.pos.x + e.off_x, y = e.pos.y + e.off_y }
             if check_overlap_circle(f_cp, e_cp, self.radius, e.radius) then
-                e:take_damage(self.damage)
+                -- Roll for critical strike
+                local is_crit = rnd(1) < (self.crit_chance or 0.01)
+                
+                if is_crit then
+                    local crit_dmg = flr(self.damage * 1.5)
+                    e:take_damage(crit_dmg, true)
+                    
+                    -- Splash 150% damage to other nearby enemies
+                    for other_e in all(enemies) do
+                        if other_e != e then
+                            local other_cp = { x = other_e.pos.x + other_e.off_x, y = other_e.pos.y + other_e.off_y }
+                            if check_overlap_circle(f_cp, other_cp, self.splash_radius or 16, other_e.radius) then
+                                other_e:take_damage(crit_dmg, true)
+                            end
+                        end
+                    end
+                    
+                    -- Spawn colorful visual explosion ring (only on crit!)
+                    trigger_explosion_effect(f_cp.x, f_cp.y, self.splash_radius or 16)
+                else
+                    -- Standard single-target hit
+                    e:take_damage(self.damage, false)
+                    
+                    -- Splash damage to other nearby enemies (no visual explosion ring!)
+                    local splash_dmg = flr(self.damage * (self.splash_ratio or 0.2))
+                    if splash_dmg > 0 then
+                        for other_e in all(enemies) do
+                            if other_e != e then
+                                local other_cp = { x = other_e.pos.x + other_e.off_x, y = other_e.pos.y + other_e.off_y }
+                                if check_overlap_circle(f_cp, other_cp, self.splash_radius or 16, other_e.radius) then
+                                    other_e:take_damage(splash_dmg, false)
+                                end
+                            end
+                        end
+                    end
+                end
+
                 self.active = false
                 break
             end
