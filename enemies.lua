@@ -13,6 +13,8 @@ function dwarf:new(x, y)
     d.off_y = 11
     d.idle_frame = 2
     d.xp_value = 15
+    d.is_predictive = rnd(1) < 0.5
+    d.damage = 10
     return d
 end
 
@@ -22,10 +24,20 @@ function dwarf:update(idx)
         return
     end
 
-    local p_cx = p.pos.x + p.off_x
-    local p_cy = p.pos.y + p.off_y
+    local hist = p.history[1]
+    local p_cx = hist.x + p.off_x
+    local p_cy = hist.y + p.off_y
     local e_cx = self.pos.x + self.off_x
     local e_cy = self.pos.y + self.off_y
+
+    local real_dx = p_cx - e_cx
+    local real_dy = p_cy - e_cy
+    local real_man_dist = abs(real_dx) + abs(real_dy)
+
+    if self.is_predictive and real_man_dist > 50 then
+        p_cx += (hist.vx or 0) * 30
+        p_cy += (hist.vy or 0) * 30
+    end
 
     local dx = p_cx - e_cx
     local dy = p_cy - e_cy
@@ -33,9 +45,9 @@ function dwarf:update(idx)
 
     -- Teleport if too far away (despawn & respawn optimization)
     -- Manhattan dist 200 roughly equals Euclidean 165
-    if man_dist > 200 then
+    if real_man_dist > 200 then
         local ang = rnd(1)
-        local spawn_dist = 90 + rnd(40)
+        local spawn_dist = 110 + rnd(30)
         self.pos.x = p.pos.x + cos(ang) * spawn_dist
         self.pos.y = p.pos.y + sin(ang) * spawn_dist
         return
@@ -73,6 +85,7 @@ function shaman:new(x, y)
     s.firerate = 90
     s.fire_timer = rnd(s.firerate)
     s.xp_value = 35
+    s.is_predictive = false
     return s
 end
 
@@ -82,8 +95,13 @@ function shaman:update(idx)
         return
     end
 
-    local p_cx = p.pos.x + p.off_x
-    local p_cy = p.pos.y + p.off_y
+    local hist = p.history[1]
+    local p_cx = hist.x + p.off_x
+    local p_cy = hist.y + p.off_y
+    if self.is_predictive then
+        p_cx += (hist.vx or 0) * 30
+        p_cy += (hist.vy or 0) * 30
+    end
     local e_cx = self.pos.x + self.off_x
     local e_cy = self.pos.y + self.off_y
 
@@ -94,7 +112,7 @@ function shaman:update(idx)
     -- Teleport if too far away (despawn & respawn optimization)
     if man_dist > 200 then
         local ang = rnd(1)
-        local spawn_dist = 90 + rnd(40)
+        local spawn_dist = 110 + rnd(30)
         self.pos.x = p.pos.x + cos(ang) * spawn_dist
         self.pos.y = p.pos.y + sin(ang) * spawn_dist
         return

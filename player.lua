@@ -17,7 +17,10 @@ function player:new()
     p.splash_radius = 16
     p.upgrades = { speed = 0, haste = 0, multishot = 0, crit = 0, splash = 0, damage = 0, vitality = 0 }
     p.iframe_timer = 0
-    p.iframe_duration = 30
+    p.iframe_duration = 10
+
+    p.history = {}
+    for i=1, 6 do add(p.history, {x=p.pos.x, y=p.pos.y, vx=0, vy=0}) end
 
     if debug_stress then
         p.firerate = 15
@@ -97,11 +100,35 @@ function player:update()
     self.anim_paused = mag == 0
 
     if mag > 0 then
-        self.pos.x += (dx / mag) * self.vel
-        self.pos.y += (dy / mag) * self.vel
+        self.vx = (dx / mag) * self.vel
+        self.vy = (dy / mag) * self.vel
+        self.pos.x += self.vx
+        self.pos.y += self.vy
+    else
+        self.vx = 0
+        self.vy = 0
     end
 
     self.iframe_timer = max(0, self.iframe_timer - 1)
+    
+    deli(self.history, 1)
+    add(self.history, {x=self.pos.x, y=self.pos.y, vx=self.vx, vy=self.vy})
+
+    if self.regen_cooldown and self.regen_cooldown > 0 then
+        self.regen_cooldown -= 1
+        self.regen_timer = 0
+    else
+        -- 2% missing hp regen per second
+        self.regen_timer = (self.regen_timer or 0) + 1
+        if self.regen_timer >= 30 then
+            self.regen_timer = 0
+            if self.hp < self.max_hp then
+                local missing = self.max_hp - self.hp
+                self.hp = min(self.max_hp, self.hp + missing * 0.02)
+            end
+        end
+    end
+
     entity.update(self)
 end
 
@@ -110,6 +137,7 @@ function player:take_damage(dmg, src)
     
     entity.take_damage(self, dmg)
     self.iframe_timer = self.iframe_duration
+    self.regen_cooldown = 150
 
     if src == nil then return end
 

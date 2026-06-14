@@ -60,6 +60,7 @@ function fireball:update()
                 local is_crit = rnd(1) < (self.crit_chance or 0.01)
                 
                 if is_crit then
+                    sfx(3)
                     local crit_dmg = flr(self.damage * 1.5)
                     e:take_damage(crit_dmg, true)
                     
